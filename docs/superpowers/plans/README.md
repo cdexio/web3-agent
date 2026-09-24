@@ -7,7 +7,7 @@ phase is implemented, following its plan. Design: `../specs/2026-09-24-zetrynai-
 
 | Phase | Plan | Depends on | Exit criterion |
 |---|---|---|---|
-| 1 | [Foundation](phase-1-foundation.md) | — | engine boots, DB migrated, every provider client passes a live smoke call with key rotation |
+| 1 | [Foundation](phase-1-foundation.md) — **built 2026-09-24**, see [report](phase-1-report.md) | — | engine boots, DB migrated, every provider client passes a live smoke call with key rotation |
 | 2 | [Scanners and route split](phase-2-scanners.md) | 1 | candidates from all free sources flow into both queues with correct routing, within budgets |
 | 3 | [Hard filter and enrichers](phase-3-filter-enrichers.md) | 2 | every candidate gets a complete, cached enrichment document or an explicit reject reason |
 | 4 | [AI layer](phase-4-ai-layer.md) | 3 | Claude persistent process scores with schema-valid output, DeepSeek fallback proven, latency measured, calibration stored |
