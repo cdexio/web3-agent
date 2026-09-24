@@ -1,0 +1,3 @@
+# Live mode overlay. Requires WALLET_KEYPAIR_PATH and an explicit owner sign-off
+# (design section 6). Position size is re-set from the paper-week data before use.
+mode: live

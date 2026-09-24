@@ -1,0 +1,48 @@
+{
+  "name": "zetrynai-engine",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ZetrynAI - independent AI-agent trading engine for Solana memecoins (two routes: Migration/Graduate and Mature)",
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0",
+    "pnpm": ">=10"
+  },
+  "packageManager": "pnpm@12.6.0",
+  "scripts": {
+    "dev": "tsx src/app/cli.ts start",
+    "start": "node dist/app/cli.js start",
+    "smoke": "tsx src/app/cli.ts smoke",
+    "health": "tsx src/app/cli.ts health",
+    "migrate": "tsx src/app/cli.ts migrate",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write ."
+  },
+  "dependencies": {
+    "@solana/spl-token": "^0.4.15",
+    "@solana/web3.js": "^1.99.0",
+    "bs58": "^6.0.0",
+    "pg": "^8.23.0",
+    "pino": "^10.3.1",
+    "tweetnacl": "^1.0.3",
+    "ws": "^8.21.3",
+    "yaml": "^2.9.1",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.14",
+    "@electric-sql/pglite": "^0.5.8",
+    "@types/node": "^24.0.0",
+    "@types/pg": "^8.23.1",
+    "@types/ws": "^8.18.1",
+    "pino-pretty": "^13.1.3",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.0",
+    "vitest": "^5.0.1"
+  }
+}

@@ -1,0 +1,145 @@
+# ZetrynAI engine configuration (non-secret). Overlays: config/<mode>.yaml.
+# Values marked [TUNABLE] are defaults awaiting paper/forward-test data; the
+# source of each non-tunable number is docs/research/2026-09-24-market-infra-ai-research.md.
+
+mode: paper
+
+routes:
+  workersPerRoute: 5
+  migration:
+    queueMax: 50 # oldest dropped beyond this (stale by definition)
+    maxPoolAgeSec: 180 # [TUNABLE] pool age to count as Migration
+    dedupCooldownSec: 300
+  mature:
+    queueMax: 200 # kept by pre-score beyond this
+    minPoolAgeSec: 1800 # [TUNABLE] 30 min
+    dedupCooldownSec: 900
+  warming:
+    recheckIntervalSec: 60
+
+risk:
+  positionSizeSol: 0.05
+  maxOpenPerRoute: 10
+  totalExposureCapSol: 0.8 # [TUNABLE] owner decision 7
+  dailyLossKillSwitchSol: 0.15 # [TUNABLE] owner decision 7
+  maxEntryPriceImpactPct: 3
+  reentry:
+    mature: { enabled: true, maxPerTokenPerDay: 2, cooldownSec: 600, allowAfterStopLoss: false }
+    migration: { enabled: false, maxPerTokenPerDay: 0, cooldownSec: 0, allowAfterStopLoss: false }
+  exits:
+    migration: # [TUNABLE] design 4.4
+      hardCapSec: 240
+      hardCapRangeSec: [180, 300]
+      stopLossPct: -18
+      trailArmPct: 25
+      trailPct: 15
+      partialTakePct: 40
+      partialTakeFraction: 0.5
+      flowExitBuySellRatio: 0.6
+      flowExitConsecutiveMinutes: 2
+    mature: # [TUNABLE] design 4.4
+      maxHoldRangeSec: [1800, 21600]
+      defaultHoldSec: 7200
+      stopLossPct: -25
+      ladder:
+        - { atPct: 50, fraction: 0.3 }
+        - { atPct: 100, fraction: 0.3 }
+      trailPct: 25
+  fees: # design 4.4 fee policy
+    tipLamportsDefault: 5000 # SWQOS-only Helius Sender minimum (0.000005 SOL)
+    tipLamportsMigrationEntry: 1000000 # 0.001 SOL, Sender Max minimum, only when enabled
+    useJitoLevelTipOnMigrationEntry: false
+    priorityFeePercentile: 75
+    priorityFeeCapLamports: 500000 # 0.0005 SOL
+    ataRentLamports: 2039280 # rent for a token account, recovered on close
+    closeTokenAccountAfterExit: true
+
+providers:
+  budgetAlarmFraction: 0.8
+  dexscreener:
+    baseUrl: https://api.dexscreener.com
+    rateLimits: # docs.dexscreener.com/api/reference
+      pairs: { perMinute: 300 }
+      profiles: { perMinute: 60 }
+    timeoutMs: 6000
+  geckoterminal:
+    baseUrl: https://api.geckoterminal.com/api/v2
+    apiVersion: "20230302"
+    rateLimits: { default: { perMinute: 30 } } # apiguide.geckoterminal.com/faq
+    timeoutMs: 8000
+  rugcheck:
+    baseUrl: https://api.rugcheck.xyz
+    rateLimits:
+      anonymous: { perMinute: 10 }
+      authenticated: { perMinute: 60 } # per API key
+    timeoutMs: 10000
+  helius:
+    rpcUrlTemplate: https://mainnet.helius-rpc.com/?api-key={key}
+    wsUrlTemplate: wss://mainnet.helius-rpc.com/?api-key={key}
+    senderUrl: https://sender.helius-rpc.com/fast
+    senderRegionalUrl: http://sg-sender.helius-rpc.com/fast
+    rateLimits: { default: { perSecond: 10 } } # Free plan
+    monthlyCreditBudget: 1000000 # Free plan
+    creditCosts: { rpc: 1, das: 10, getProgramAccounts: 10, streamPerMb: 20 }
+    # All Helius WebSocket traffic is billed 20 credits/MB since 2026-05-01, so streams
+    # are disabled here and served by Alchemy / PumpPortal / public RPC instead.
+    wsEnabled: false
+    timeoutMs: 8000
+  alchemy:
+    rpcUrlTemplate: https://solana-mainnet.g.alchemy.com/v2/{key}
+    wsUrlTemplate: wss://solana-mainnet.g.alchemy.com/v2/{key}
+    monthlyComputeUnitBudget: 30000000 # Free tier
+    computeUnitPerStreamEventEstimate: 40 # Alchemy docs: ~1000-byte event ~ 40 CU
+    computeUnitPerRpcCallEstimate: 20 # [TUNABLE] estimate; replace with dashboard-measured value
+    maxWsConnections: 100
+    rateLimits: { default: { perSecond: 25 } }
+    timeoutMs: 8000
+  websocket:
+    maxSubscriptionsPerConnection: 500 # [TUNABLE] conservative; Helius documents 1000/connection
+    pingIntervalMs: 30000
+    reconnectBaseMs: 2000
+    reconnectMaxMs: 60000
+  publicRpc:
+    httpUrls: [https://api.mainnet-beta.solana.com]
+    wsUrls: [wss://api.mainnet-beta.solana.com]
+    rateLimits: { default: { perSecond: 4 } } # 40 requests per 10 seconds per IP
+    timeoutMs: 10000
+  jupiter:
+    baseUrl: https://api.jup.ag/swap/v2
+    rateLimits: { default: { perSecond: 1 } } # conservative until headers are observed
+    timeoutMs: 8000
+    referenceQuote:
+      inputMint: So11111111111111111111111111111111111111112
+      outputMint: EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
+      amount: "10000000"
+  pumpportal:
+    wsUrl: wss://pumpportal.fun/api/data
+    reconnectBaseMs: 5000
+    reconnectMaxMs: 120000
+  deepseek:
+    baseUrl: https://api.deepseek.com
+    model: deepseek-v4-flash
+    timeoutMs: 8000
+  claude:
+    model: claude-opus-5-5
+    effort: medium
+    healthTimeoutMs: 60000
+
+ai:
+  primary: claude
+  fallback: deepseek
+  thresholds: { migrationPWin: 0.65, maturePWin: 0.65 } # [TUNABLE]
+  timeouts: { migrationMs: 2500, matureMs: 8000 } # [TUNABLE]
+  claudeDailyCallCap: 2000
+
+kol:
+  walletsFile: config/kol-wallets.json
+
+twitter:
+  sidecarUrl: http://127.0.0.1:8765
+  timeoutMs: 3000
+
+db:
+  poolMax: 10
+  heartbeatIntervalSec: 60
+  statementTimeoutMs: 15000

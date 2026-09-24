@@ -1,0 +1,4 @@
+# Backtest overlay (Mature route replay, Phase 7). No scanners, no execution.
+mode: backtest
+routes:
+  workersPerRoute: 1

@@ -1,0 +1,32 @@
+# dependencies and build output
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# secrets and runtime data (never commit)
+.env
+.env.*
+!.env.example
+data/
+*.dump
+*.sql.gz
+wallets/
+sidecar/twitter/accounts.db
+sidecar/twitter/accounts.json
+config/kol-wallets.json
+
+# logs and pm2
+logs/
+*.log
+.pm2/
+
+# python sidecar
+sidecar/**/__pycache__/
+sidecar/**/.venv/
+
+# editors / os
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json

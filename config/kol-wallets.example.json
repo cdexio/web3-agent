@@ -1,0 +1,11 @@
+{
+  "$comment": "Copy to config/kol-wallets.json (git-ignored). Addresses come from GMGN KOL/smart-money lists chosen by the owner.",
+  "wallets": [
+    {
+      "address": "REPLACE_WITH_BASE58_WALLET_ADDRESS",
+      "label": "example-kol",
+      "source": "gmgn",
+      "addedAt": "2026-09-24"
+    }
+  ]
+}
