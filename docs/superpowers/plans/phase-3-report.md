@@ -49,9 +49,51 @@ rejections: liquidity 44, quote 3, volume 3, volume/liquidity 2; post
 rejection: danger risk 1; 38 accepted to the (placeholder) AI stage;
 pipeline latency avg 2.7 s, p95 6.4 s (timeouts).
 
-## Soak 4 (5 min, after fixes)
+## Soak 4 (5 min, after the first fixes) — two problems remained
 
-_Filled in below._
+- WebSocket volume unchanged (19,160 messages, 11.5 MB) although the KOL
+  handler saw only 7 events: the bot wallet streams **failed**
+  transactions (113 notifications/s, `InstructionError`), and the handler
+  discarded failed transactions before counting them, so the budget never
+  tripped. Fix: count before the error check, plus a socket-level cap
+  (`websocket.maxMessagesPerMinutePerSubscription`, 600) that drops any
+  runaway subscription.
+- Security still 35/40 unavailable: the RugCheck lane was capped at the
+  documented 10/min, but a burst of 16 anonymous reports in 17 s returned
+  16× 200, so the real limit is far higher. Lane raised to 40/min, burst 2.
+- Migration flow rules rejected a migration seconds after creation
+  (`min_buys_m5` on a nearly empty 5-minute window): the m5 flow rules now
+  apply only once the pool is ≥ 60 s old (`minAgeForFlowRulesSec`).
+
+## Soak 5 (5 min, final)
+
+| Metric | Soak 3 | Soak 5 |
+|---|---|---|
+| WebSocket messages / bytes | 18,698 / 11.3 MB | **138 / 132 KB** |
+| Alchemy calls / CU | 18,890 / 755,840 | **144 / 7,960** |
+| Security section available | 3 of 39 | **50 of 53** (avg 6.1 s incl. queue) |
+| Market section available | 39 of 39 | 53 of 53 (avg 0.23 s) |
+| Pipeline latency avg / p95 | 2.7 s / 6.4 s | 3.6 s / 10.5 s (security queue on Mature) |
+| Mature: evaluated / passed | 85 / 38 (post rules mostly unknown) | 82 / 24 (post rules effective: top-10 holders 16, rug score 4, LP lock 1, authorities 1, danger 0) |
+| Migration: evaluated / passed | 6 / 0 | 8 / 3 (4 rejected for RugCheck danger risks, 1 for buys) |
+| GeckoTerminal | 100 calls, 74 rejected | 28 calls, 2 rejected (adaptive lane settled at 5/min) |
+| RugCheck | 47 calls, 4 auth errors | 65 calls, 6 auth errors (owner's key), no timeouts |
+
+Optional sections skipped by design when the GeckoTerminal lane is busy
+(flow 53, candles 50) and the Twitter stub (53) are reported as
+unavailable with the reason, never invented.
+
+Budget extrapolation from soak 5: Alchemy ~95k CU/day (~3M/month of 30M),
+Helius ~2k credits/day, DexScreener ~3,200 calls/hour (limit 18,000),
+RugCheck ~780 reports/hour anonymous.
+
+## Exit criterion (plan 3)
+
+"Every candidate gets a complete, cached enrichment document or an
+explicit reject reason" — met: every routed candidate has a
+`filter_decisions` row with the failing rule and outcomes, and every
+survivor an `enrichments` row listing exactly which sections were
+unavailable and why.
 
 ## Owner inputs
 
