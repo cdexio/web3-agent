@@ -55,7 +55,14 @@ export const configSchema = z.object({
     ammLaunchpadByDexId: z.record(z.string(), z.string()),
     migrationWatcher: z.object({
       enabled: z.boolean(),
-      programs: z.array(z.object({ id: z.string(), label: z.string(), launchpad: z.string() })),
+      programs: z.array(
+        z.object({
+          id: z.string(),
+          label: z.string(),
+          launchpad: z.string(),
+          logMatch: z.string().optional(),
+        }),
+      ),
     }),
     pumpportal: z.object({ enabled: z.boolean() }),
     kol: z.object({

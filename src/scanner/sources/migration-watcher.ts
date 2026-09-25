@@ -6,15 +6,15 @@ import type { SolanaRpcPool } from "../../infra/providers/solana-rpc.js";
 import type { SolanaWsManager, Subscription } from "../../infra/providers/solana-ws.js";
 import { type Clock, systemClock } from "../../infra/time.js";
 import type { ScannerMetrics } from "../metrics.js";
-import { nonQuoteMints, type ParsedTransaction, txSucceeded } from "../tx-parse.js";
+import {
+  type LogsNotification,
+  nonQuoteMints,
+  type ParsedTransaction,
+  txSucceeded,
+  unwrapLogsNotification,
+} from "../tx-parse.js";
 import { SeenCache } from "./interval-source.js";
 import type { SourceSink } from "./poll-sources.js";
-
-interface LogsNotification {
-  signature: string;
-  err: unknown;
-  logs: string[];
-}
 
 /**
  * Subscribes to the logs of migration-only programs (design section 3) and
@@ -47,7 +47,8 @@ export class MigrationWatcher {
     for (const program of this.cfg.programs) {
       try {
         const sub = await this.ws.subscribeLogs(program.id, (result) => {
-          void this.onLogs(result as LogsNotification, program.label, program.launchpad);
+          const n = unwrapLogsNotification(result);
+          if (n) void this.onLogs(n, program);
         });
         this.subs.push(sub);
         this.log.info(
@@ -66,14 +67,25 @@ export class MigrationWatcher {
     this.subs.length = 0;
   }
 
-  stats(): { subscriptions: number; inFlight: number } {
-    return { subscriptions: this.subs.length, inFlight: this.inFlight };
+  stats(): { subscriptions: number; inFlight: number; ignored: number } {
+    return { subscriptions: this.subs.length, inFlight: this.inFlight, ignored: this.ignored };
   }
 
-  private async onLogs(n: LogsNotification, label: string, launchpad: string): Promise<void> {
-    if (!n?.signature || n.err) return;
-    if (!this.seen.first(n.signature)) return;
+  /** Notifications that mentioned the account but were not migrations (no getTransaction spent). */
+  private ignored = 0;
+
+  private async onLogs(
+    n: LogsNotification,
+    program: { label: string; launchpad: string; logMatch?: string | undefined },
+  ): Promise<void> {
+    const { label, launchpad } = program;
     this.metrics.event(this.name);
+    if (n.err) return;
+    if (program.logMatch && !n.logs.some((l) => l.includes(program.logMatch as string))) {
+      this.ignored += 1;
+      return;
+    }
+    if (!this.seen.first(n.signature)) return;
     this.inFlight += 1;
     try {
       const tx = await this.fetchTransaction(n.signature);

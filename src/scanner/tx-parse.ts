@@ -35,6 +35,33 @@ export interface TokenBalance {
 
 export const QUOTE_MINTS: ReadonlySet<string> = new Set([SOL_MINT, USDC_MINT]);
 
+export interface LogsNotification {
+  signature: string;
+  err: unknown;
+  logs: string[];
+}
+
+/**
+ * `logsNotification` payloads are `{ context, value: { signature, err, logs } }`
+ * (verified on Alchemy, Helius and the public RPC 2026-09-25); slot
+ * notifications are flat. Accept both shapes.
+ */
+export function unwrapLogsNotification(result: unknown): LogsNotification | null {
+  if (typeof result !== "object" || result === null) return null;
+  const r = result as { value?: unknown; signature?: unknown };
+  const v = (typeof r.value === "object" && r.value !== null ? r.value : result) as {
+    signature?: unknown;
+    err?: unknown;
+    logs?: unknown;
+  };
+  if (typeof v.signature !== "string") return null;
+  return {
+    signature: v.signature,
+    err: v.err ?? null,
+    logs: Array.isArray(v.logs) ? (v.logs as string[]) : [],
+  };
+}
+
 export function accountKey(tx: ParsedTransaction, index: number): string | null {
   const key = tx.transaction?.message?.accountKeys?.[index];
   if (!key) return null;

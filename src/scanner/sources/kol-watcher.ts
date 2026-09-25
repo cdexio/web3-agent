@@ -7,14 +7,14 @@ import type { SolanaRpcPool } from "../../infra/providers/solana-rpc.js";
 import type { SolanaWsManager, Subscription } from "../../infra/providers/solana-ws.js";
 import type { KolWallet } from "../kol-wallets.js";
 import type { ScannerMetrics } from "../metrics.js";
-import { detectWalletTrade, type ParsedTransaction } from "../tx-parse.js";
+import {
+  detectWalletTrade,
+  type LogsNotification,
+  type ParsedTransaction,
+  unwrapLogsNotification,
+} from "../tx-parse.js";
 import { SeenCache } from "./interval-source.js";
 import type { SourceSink } from "./poll-sources.js";
-
-interface LogsNotification {
-  signature: string;
-  err: unknown;
-}
 
 /**
  * Watches the owner's GMGN KOL wallets through `logsSubscribe` (one
@@ -50,7 +50,8 @@ export class KolWatcher {
     for (const wallet of this.wallets) {
       try {
         const sub = await this.ws.subscribeLogs(wallet.address, (result) => {
-          void this.onLogs(result as LogsNotification, wallet);
+          const n = unwrapLogsNotification(result);
+          if (n) void this.onLogs(n, wallet);
         });
         this.subs.set(wallet.address, sub);
       } catch (err) {
@@ -71,7 +72,7 @@ export class KolWatcher {
   }
 
   private async onLogs(n: LogsNotification, wallet: KolWallet): Promise<void> {
-    if (!n?.signature || n.err) return;
+    if (n.err) return;
     if (!this.seen.first(`${wallet.address}:${n.signature}`)) return;
     this.metrics.event(this.name);
     try {

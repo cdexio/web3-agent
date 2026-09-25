@@ -38,8 +38,13 @@ scanner:
     enabled: true
     # Only programs whose logs are migration-only. Never subscribe to an AMM or bonding-curve
     # program here: their logs carry every swap and would exhaust the stream budget.
+    # `logMatch`: only notifications whose logs contain this text trigger a getTransaction
+    # (the migration account is also mentioned by small fee transactions; probe 2026-09-25).
     programs:
-      - { id: 39azUYFWPz3VHgKCf3VChUwbpURdCHRxjWVowf5jUJjg, label: pump.fun-migration, launchpad: pump.fun }
+      - id: 39azUYFWPz3VHgKCf3VChUwbpURdCHRxjWVowf5jUJjg
+        label: pump.fun-migration
+        launchpad: pump.fun
+        logMatch: "Instruction: Migrate"
   pumpportal: { enabled: true }
   kol: { enabled: true, maxWallets: 200, botSuspectTradesPerDay: 150 }
 

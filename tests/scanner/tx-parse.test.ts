@@ -7,6 +7,7 @@ import {
   detectWalletTrade,
   nonQuoteMints,
   type ParsedTransaction,
+  unwrapLogsNotification,
 } from "../../src/scanner/tx-parse.js";
 
 const SOL = "So11111111111111111111111111111111111111112";
@@ -104,6 +105,27 @@ describe("tx-parse", () => {
     expect(
       detectWalletTrade(swapTx({ preBalances: [1, 0], postBalances: [2, 0] }), WALLET),
     ).toBeNull();
+  });
+});
+
+describe("unwrapLogsNotification", () => {
+  it("accepts the wrapped shape used by logsNotification and the flat shape", () => {
+    const wrapped = unwrapLogsNotification({
+      context: { slot: 1 },
+      value: { signature: "sig", err: null, logs: ["Program log: Instruction: Migrate"] },
+    });
+    expect(wrapped).toEqual({
+      signature: "sig",
+      err: null,
+      logs: ["Program log: Instruction: Migrate"],
+    });
+    expect(unwrapLogsNotification({ signature: "flat", err: null })).toEqual({
+      signature: "flat",
+      err: null,
+      logs: [],
+    });
+    expect(unwrapLogsNotification({ slot: 5 })).toBeNull();
+    expect(unwrapLogsNotification(null)).toBeNull();
   });
 });
 
