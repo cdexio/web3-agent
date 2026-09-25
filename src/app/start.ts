@@ -1,11 +1,15 @@
+import path from "node:path";
 import { ConfigError, configHash } from "../config/load.js";
 import { assertSecretsForMode } from "../config/secrets.js";
 import type { Mode } from "../domain/types.js";
+import { Enricher } from "../enrich/enricher.js";
+import { HardFilter, loadCreatorBlacklist } from "../filter/hard-filter.js";
 import { pendingMigrations, runMigrations } from "../infra/db/migrate.js";
-import { ConfigVersionRepo, HeartbeatRepo, UsageRepo } from "../infra/db/repos.js";
+import { CandidateRepo, ConfigVersionRepo, HeartbeatRepo, UsageRepo } from "../infra/db/repos.js";
 import { errorMessage } from "../infra/errors.js";
+import { awaitingAiStage, FilterEnrichPipeline } from "../pipeline/stage-pipeline.js";
 import { Scanner } from "../scanner/scanner.js";
-import { buildContext, MIGRATIONS_DIR } from "./context.js";
+import { buildContext, MIGRATIONS_DIR, PROJECT_ROOT } from "./context.js";
 import { collectHealth } from "./health.js";
 
 export interface StartOptions {
@@ -60,11 +64,34 @@ export async function start(opts: StartOptions = {}): Promise<void> {
     if (ctx.config.mode === "live") {
       log.warn("LIVE MODE: real transactions will be sent once execution is attached (Phase 5/9)");
     }
-    const scanner = ctx.config.mode === "backtest" ? null : new Scanner(ctx);
+    const blacklistFile = path.isAbsolute(ctx.config.filter.creatorBlacklistFile)
+      ? ctx.config.filter.creatorBlacklistFile
+      : path.join(PROJECT_ROOT, ctx.config.filter.creatorBlacklistFile);
+    const hardFilter = new HardFilter(ctx.config.filter, loadCreatorBlacklist(blacklistFile));
+    const enricher = new Enricher(ctx.config.enrich, ctx.config.scanner.kol, {
+      rugcheck: ctx.providers.rugcheck,
+      dexscreener: ctx.providers.dexscreener,
+      geckoterminal: ctx.providers.geckoterminal,
+      rpc: ctx.providers.rpc,
+      db: ctx.db,
+      logger: ctx.logger,
+    });
+    const pipeline = new FilterEnrichPipeline(
+      ctx.config.filter,
+      hardFilter,
+      enricher,
+      new CandidateRepo(ctx.db),
+      awaitingAiStage,
+      ctx.logger,
+    );
+    const scanner =
+      ctx.config.mode === "backtest"
+        ? null
+        : new Scanner(ctx, { migration: pipeline, mature: pipeline });
     if (scanner) await scanner.start();
     log.info(
       { mode: ctx.config.mode, instance: ctx.instanceId, scanner: scanner !== null },
-      "engine started (phase 2: scanners and routing; trading stages not attached)",
+      "engine started (phase 3: scanners, hard filter and enrichers; AI/risk/execution not attached)",
     );
 
     const beat = async () => {
@@ -73,6 +100,7 @@ export async function start(opts: StartOptions = {}): Promise<void> {
         const health = await collectHealth(ctx, stats ? { queues: stats.queues } : undefined);
         await heartbeats.beat(ctx.instanceId, ctx.config.mode, {
           budgets: health.budgets.map((b) => ({ p: b.provider, m: b.unitsMonth, f: b.fraction })),
+          pipeline: pipeline.snapshot(),
           ws: ctx.providers.ws.stats(),
           queues: health.queues,
           scanner: stats
@@ -121,6 +149,7 @@ export async function start(opts: StartOptions = {}): Promise<void> {
         { routes: s.metrics.routes, sources: s.metrics.sources, workers: s.workers },
         "scanner stopped",
       );
+      log.info(pipeline.snapshot(), "pipeline stopped");
     }
     await beat();
     await flush();

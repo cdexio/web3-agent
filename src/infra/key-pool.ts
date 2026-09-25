@@ -93,6 +93,17 @@ export class KeyPool<T> {
     return undefined;
   }
 
+  /** The credential `next()` would return, without advancing the rotation. */
+  peek(): Leased<T> | undefined {
+    if (this.slots.length === 0) return undefined;
+    const now = this.clock.now();
+    for (let i = 0; i < this.slots.length; i++) {
+      const slot = this.slots[(this.cursor + i) % this.slots.length];
+      if (slot && slot.cooldownUntil <= now) return { id: slot.id, value: slot.value };
+    }
+    return undefined;
+  }
+
   /** Milliseconds until at least one credential is healthy again (0 if one is). */
   msUntilAnyHealthy(): number {
     if (this.slots.length === 0) return Number.POSITIVE_INFINITY;

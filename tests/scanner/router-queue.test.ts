@@ -47,9 +47,14 @@ describe("Router", () => {
     expect(r.decide(candidate({ ageSec: 3600, triggerTags: ["trending_1h"] }, clock)).route).toBe(
       "mature",
     );
+    // A migration event is resolved first when its pool is unknown, then routed to Migration
+    // regardless of the resolved pool age.
     expect(
       r.decide(candidate({ triggerTags: ["migration"], poolAddress: null }, clock)).route,
-    ).toBe("migration");
+    ).toBe("unresolved");
+    expect(r.decide(candidate({ triggerTags: ["migration"], ageSec: 900 }, clock)).route).toBe(
+      "migration",
+    );
     expect(r.decide(candidate({ dexId: "pump-fun", ageSec: 10 }, clock)).route).toBe("launch");
     expect(r.decide(candidate({ poolAddress: null, triggerTags: ["boost"] }, clock)).route).toBe(
       "unresolved",

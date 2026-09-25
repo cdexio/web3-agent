@@ -21,7 +21,10 @@ except the VPS itself and the AI subscriptions (owner rule 7).
    as comma-separated lists (one key is enough to start; more keys are
    rotated automatically). Where to create each key is in `docs/keys.md`.
 3. Copy `config/kol-wallets.example.json` to `config/kol-wallets.json` and
-   add the owner's GMGN wallets (Phase 2 reads it).
+   add the owner's GMGN wallets (the engine reads only the git-ignored
+   `kol-wallets.json`, never the example file). Optionally copy
+   `config/creator-blacklist.example.json` to `config/creator-blacklist.json`
+   for creator wallets the hard filter must always reject.
 4. Apply the schema: `pnpm migrate`.
 5. Verify every provider with one live call: `pnpm smoke`
    (add `--with-claude-call` to also spend one tiny Claude turn).
@@ -85,5 +88,7 @@ requires `WALLET_KEYPAIR_PATH` and refuses to start otherwise.
 - `smoke` shows `FAIL` for `solana-ws`: no WebSocket endpoint answered; add an Alchemy or Helius key. Alchemy subscriptions use the `streaming` host, which the config already points to.
 - `smoke` shows `FAIL` for `rpc:extra` with a network error: `EXTRA_RPC_HTTP_URLS` / `EXTRA_RPC_WS_URLS` must be full URLs, not API keys; clear them if unused.
 - Pass flags without a separating `--`: `pnpm smoke --with-claude-call` (a literal `--` is also tolerated).
+- `getTransaction: Transaction version (1) is not supported`: mainnet carries version-1 transactions since 2026; the engine requests `maxSupportedTransactionVersion: 1`. If a provider rejects that value, it is behind and the pool fails over.
+- A KOL wallet logged as `wallet over event budget; bot suspect`: it fired more than `scanner.kol.maxEventsPerHourPerWallet` log events in an hour; its transactions are skipped for the rest of that hour and `kol_wallets.flags` records it. Remove bot-like wallets from the list.
 - `claude` smoke fails with a nested-session error: the engine strips the `CLAUDECODE` env marker; make sure `claude` is the real binary in `PATH` and logged in (`claude auth status`).
 - Postgres `fe_sendauth: no password supplied`: `DATABASE_URL` lacks a password or the role uses peer auth.

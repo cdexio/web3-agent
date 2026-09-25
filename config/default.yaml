@@ -30,8 +30,11 @@ scanner:
   poolResolve: { retries: 3, retryDelaySec: 10 } # DexScreener token-pairs lookup after a migration event
   # [TUNABLE] GeckoTerminal dex ids that are bonding curves (pre-graduation); they are recorded as
   # launches for creator history, never traded. Unknown dex ids are treated as AMM pools.
+  # GeckoTerminal ids first, then the DexScreener spellings seen in the pool resolver
+  # (pumpfun, meteoradbc, launchlab observed 2026-09-25).
   bondingCurveDexIds:
-    [pump-fun, raydium-launchlab, meteora-dbc, boop-fun, moonit, moonshot, heaven, bags-fm, token-mill, virtuals-solana, daos-fun]
+    [pump-fun, raydium-launchlab, meteora-dbc, boop-fun, moonit, moonshot, heaven, bags-fm, token-mill, virtuals-solana, daos-fun,
+     pumpfun, meteoradbc, launchlab, boopfun, bags]
   # AMM dex id -> launchpad the pool graduated from, when that is known by construction.
   ammLaunchpadByDexId: { pumpswap: pump.fun }
   migrationWatcher:
@@ -46,7 +49,57 @@ scanner:
         launchpad: pump.fun
         logMatch: "Instruction: Migrate"
   pumpportal: { enabled: true }
-  kol: { enabled: true, maxWallets: 200, botSuspectTradesPerDay: 150 }
+  # A wallet above maxEventsPerHourPerWallet (one GMGN wallet produced 665 log events in 4 min on
+  # 2026-09-25) is flagged bot_suspect and its transactions are no longer fetched, so Alchemy/Helius
+  # credits go to human-paced wallets. [TUNABLE]
+  kol: { enabled: true, maxWallets: 200, botSuspectTradesPerDay: 150, maxEventsPerHourPerWallet: 120 }
+
+# Hard filter (design 4.1). Every threshold is [TUNABLE] from paper/forward-test data.
+# A rule whose input is unknown either fails ("fail") or is skipped and reported ("skip").
+filter:
+  creatorBlacklistFile: config/creator-blacklist.json
+  migration:
+    quoteMints: [So11111111111111111111111111111111111111112, EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v]
+    minLiquidityUsd: 8000 # a full pump.fun curve migrates ~85 SOL (~$9.8k)
+    minBuysM5: 15
+    minBuyersM5: 10
+    minBuySellRatioM5: 1.2
+    minAgeForFlowRulesSec: 60 # below this age the m5 flow rules are skipped (window nearly empty)
+    requireAuthoritiesRevoked: true
+    maxRugScoreNormalised: 60
+    forbidDangerRisks: true
+    maxTransferFeePct: 0
+    maxCreatorDeadTokenRatio: 0.6 # share of the creator's earlier tokens with market cap < $1k
+    minCreatorTokensForRatio: 3
+  mature:
+    quoteMints: [So11111111111111111111111111111111111111112, EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v]
+    minLiquidityUsd: 25000
+    minVolumeH24Usd: 50000
+    minVolumeToLiquidity: 0.5
+    minHolders: 150
+    maxTop10HoldersPct: 35
+    minLpLockedPct: 90
+    lpBurnedDexIds: [pumpswap] # PumpSwap burns LP tokens at migration (research 1.3)
+    maxRugScoreNormalised: 40
+    forbidDangerRisks: true
+    maxTransferFeePct: 0
+    requireSignalTag: true
+  signals: # computed from the snapshot; add breakout / golden_swing tags
+    breakout: { minChangeH1Pct: 15, minChangeM5Pct: 3, minVolumeH1ToHourlyAvg: 3 }
+    goldenSwing: { maxChangeH24Pct: -30, minChangeH1Pct: 5, minVolumeH1ToHourlyAvg: 1.5 }
+
+enrich:
+  # Per enricher; slow sections become "unavailable". RugCheck itself answers in 0.6-2 s
+  # (probe 2026-09-25) but queues behind the 10/min anonymous limit on the Mature route.
+  timeouts: { migrationMs: 2500, matureMs: 6000, securityMatureMs: 20000 }
+  cacheTtl: { migrationSec: 20, matureSec: 120 }
+  solUsdcPair: 58oQChx4yWmvKdwLLZzBi4ChoCc2fqCUWBkwMihLYQo2 # Raydium SOL/USDC, for SOL price context
+  contextCacheSec: 60
+  kolClusterWindowMin: 10
+  # GeckoTerminal is the tightest budget (20/min shared with the scanner): flow (trades + pool)
+  # only on Migration, candles (m1 OHLCV) only on Mature.
+  geckoFlowOnMigration: true
+  geckoCandlesOnMature: true
 
 risk:
   positionSizeSol: 0.05
@@ -100,11 +153,16 @@ providers:
     # 2026-09-25), so calls are spread evenly at 20/min with no burst; 429 pauses the client.
     rateLimits: { default: { perMinute: 20, burst: 1 } }
     rateLimitPauseMs: 15000
+    # Adaptive: halve the rate on every 429 down to this floor, recover after 20 successes.
+    # A 1-call-per-4-s probe on 2026-09-25 still saw 11/20 rejections, so the real limit moves.
+    adaptiveMinPerMinute: 4
     timeoutMs: 8000
   rugcheck:
     baseUrl: https://api.rugcheck.xyz
     rateLimits:
-      anonymous: { perMinute: 10 }
+      # Third-party docs say 10/min anonymous, but a burst of 16 full reports in 17 s returned
+      # 16x 200 (probe 2026-09-25). 40/min with burst 2 keeps a safety margin; 429s still pause.
+      anonymous: { perMinute: 40, burst: 2 }
       authenticated: { perMinute: 60 } # per API key
     timeoutMs: 10000
   helius:
@@ -133,6 +191,9 @@ providers:
     timeoutMs: 8000
   websocket:
     maxSubscriptionsPerConnection: 500 # [TUNABLE] conservative; Helius documents 1000/connection
+    # A runaway subscription is dropped at the socket (one bot wallet streamed 113 msgs/s of
+    # failed transactions on 2026-09-25, ~235M Alchemy CU/day if left alone). [TUNABLE]
+    maxMessagesPerMinutePerSubscription: 600
     pingIntervalMs: 30000
     reconnectBaseMs: 2000
     reconnectMaxMs: 60000

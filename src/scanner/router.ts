@@ -37,11 +37,13 @@ export class Router {
     if (this.opts.classifier.isBondingCurve(candidate.dexId)) {
       return { route: "launch", reason: `bonding curve on ${candidate.dexId}` };
     }
-    if (candidate.triggerTags.includes("migration")) {
-      return { route: "migration", reason: "migration event" };
-    }
+    // A migration event without its pool is resolved first (liquidity, quote, dex come from the
+    // pool), then routed straight to Migration regardless of the resolver's pool age.
     if (!candidate.poolAddress || !candidate.poolCreatedAt) {
       return { route: "unresolved", reason: "pool unknown" };
+    }
+    if (candidate.triggerTags.includes("migration")) {
+      return { route: "migration", reason: "migration event" };
     }
     const age = poolAgeSec(candidate, now) ?? Number.POSITIVE_INFINITY;
     if (age <= this.opts.migrationMaxPoolAgeSec) {

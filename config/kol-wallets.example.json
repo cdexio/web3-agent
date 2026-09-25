@@ -1,5 +1,5 @@
 {
-  "$comment": "Copy to config/kol-wallets.json (git-ignored). Addresses come from GMGN KOL/smart-money lists chosen by the owner.",
+  "$comment": "Template only. Copy to config/kol-wallets.json (git-ignored) and replace with GMGN KOL/smart-money wallets chosen by the owner.",
   "wallets": [
     {
       "address": "REPLACE_WITH_BASE58_WALLET_ADDRESS",

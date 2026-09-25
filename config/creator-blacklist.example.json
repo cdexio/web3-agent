@@ -1,0 +1,4 @@
+{
+  "$comment": "Copy to config/creator-blacklist.json (git-ignored). Creator wallets whose launches are rejected by the hard filter.",
+  "creators": [{ "address": "REPLACE_WITH_BASE58_WALLET_ADDRESS", "reason": "serial rugger", "addedAt": "2026-09-25" }]
+}

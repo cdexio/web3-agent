@@ -27,6 +27,9 @@ interface SubRecord {
   params: unknown[];
   handler: NotificationHandler;
   serverId: number | null;
+  windowStart: number;
+  windowCount: number;
+  dropped: boolean;
 }
 
 interface Pending {
@@ -205,6 +208,7 @@ class Connection {
       if (!params) return;
       for (const s of this.subs.values()) {
         if (s.serverId === params.subscription) {
+          if (this.overRate(s)) return;
           try {
             s.handler(params.result, { subscriptionId: s.id, provider: this.endpoint.provider });
           } catch (err) {
@@ -214,6 +218,29 @@ class Connection {
         }
       }
     }
+  }
+
+  /**
+   * Defence in depth against a runaway subscription (stream bytes are billed): a
+   * subscription that exceeds the per-minute message cap is dropped at the socket.
+   */
+  private overRate(s: SubRecord): boolean {
+    const now = Date.now();
+    if (now - s.windowStart >= 60_000) {
+      s.windowStart = now;
+      s.windowCount = 0;
+    }
+    s.windowCount += 1;
+    if (s.windowCount <= this.cfg.maxMessagesPerMinutePerSubscription) return false;
+    if (!s.dropped) {
+      s.dropped = true;
+      this.logger.warn(
+        { sub: s.id, method: s.method, messagesThisMinute: s.windowCount, params: s.params },
+        "subscription over message cap; dropping it",
+      );
+      void this.unsubscribe(s.id);
+    }
+    return true;
   }
 
   private failAllPending(err: Error): void {
@@ -318,7 +345,17 @@ export class SolanaWsManager {
     for (;;) {
       const conn = await this.pickConnection(method);
       const id = `sub-${this.nextSubId++}`;
-      const record: SubRecord = { id, method, unsubscribeMethod, params, handler, serverId: null };
+      const record: SubRecord = {
+        id,
+        method,
+        unsubscribeMethod,
+        params,
+        handler,
+        serverId: null,
+        windowStart: Date.now(),
+        windowCount: 0,
+        dropped: false,
+      };
       try {
         await conn.subscribe(record);
       } catch (err) {

@@ -147,6 +147,47 @@ describe("ProviderClient", () => {
     expect(clock.sleeps.some((ms) => ms >= 29_000 && ms <= 30_000)).toBe(true);
   });
 
+  it("adapts the lane rate: halves on 429, recovers after a streak of successes", async () => {
+    const clock = new FakeClock();
+    const budget = new BudgetTracker({ test: { unitName: "calls" } }, 0.8, null, null, clock);
+    class Adaptive extends ProviderClient<string> {
+      constructor() {
+        super({
+          name: "adaptive",
+          keys: [],
+          keyId: (k) => k,
+          allowAnonymous: true,
+          limiterFor: () => ({ perMinute: 20, burst: 1 }),
+          adaptiveRate: { minPerMinute: 4, successesToRaise: 3 },
+          rateLimitPauseMs: 1,
+          budget,
+          logger: nullLogger(),
+          retries: 0,
+          clock,
+        });
+      }
+      run<T>(fn: () => Promise<T>) {
+        return this.call(fn);
+      }
+      smoke(): Promise<SmokeResult> {
+        return Promise.resolve({ provider: "adaptive", ok: true });
+      }
+    }
+    const c = new Adaptive();
+    await c.run(async () => "ok");
+    expect(c.adaptiveRates()["anonymous|default"]).toBe(20);
+    for (let i = 0; i < 3; i++) {
+      await c
+        .run(async () => {
+          throw new ProviderError("adaptive", "429", { kind: "rate_limit", status: 429 });
+        })
+        .catch(() => undefined);
+    }
+    expect(c.adaptiveRates()["anonymous|default"]).toBe(4); // 20 -> 10 -> 5 -> 4 (floor)
+    for (let i = 0; i < 3; i++) await c.run(async () => "ok");
+    expect(c.adaptiveRates()["anonymous|default"]).toBe(5);
+  });
+
   it("refuses to run without a key when anonymous is not allowed", async () => {
     const clock = new FakeClock();
     const budget = new BudgetTracker({ test: { unitName: "calls" } }, 0.8, null, null, clock);

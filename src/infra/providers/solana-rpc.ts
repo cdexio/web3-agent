@@ -316,11 +316,19 @@ export class SolanaRpcPool {
     return this.request<number>("getSlot", [{ commitment: "processed" }]);
   }
 
-  getTransaction(signature: string): Promise<unknown> {
-    return this.request("getTransaction", [
-      signature,
-      { encoding: "jsonParsed", maxSupportedTransactionVersion: 0, commitment: "confirmed" },
-    ]);
+  /**
+   * Mainnet now carries transaction version 1 (KOL wallet swaps observed 2026-09-25;
+   * both Helius and Alchemy reject version 0 requests for them with -32015).
+   */
+  getTransaction(signature: string, prefer?: RpcProviderName[]): Promise<unknown> {
+    return this.request(
+      "getTransaction",
+      [
+        signature,
+        { encoding: "jsonParsed", maxSupportedTransactionVersion: 1, commitment: "confirmed" },
+      ],
+      prefer ? { prefer } : {},
+    );
   }
 
   getMultipleAccounts(pubkeys: readonly string[]): Promise<unknown> {

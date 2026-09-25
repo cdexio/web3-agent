@@ -71,12 +71,80 @@ export class KolWatcher {
     return { wallets: this.wallets.length, subscriptions: this.subs.size };
   }
 
+  private readonly hourly = new Map<
+    string,
+    { windowStart: number; events: number; flagged: boolean }
+  >();
+
+  /** Per-wallet event budget: a wallet that fires like a bot stops costing transaction lookups. */
+  private overBudget(wallet: KolWallet): boolean {
+    const now = Date.now();
+    let h = this.hourly.get(wallet.address);
+    if (!h || now - h.windowStart >= 3_600_000) {
+      h = { windowStart: now, events: 0, flagged: false };
+      this.hourly.set(wallet.address, h);
+    }
+    h.events += 1;
+    if (h.events <= this.cfg.maxEventsPerHourPerWallet) return false;
+    if (!h.flagged) {
+      h.flagged = true;
+      this.log.warn(
+        { wallet: wallet.address, label: wallet.label, eventsThisHour: h.events },
+        "wallet over event budget; bot suspect, unsubscribing for an hour",
+      );
+      void this.repo
+        .flag(wallet.address, { bot_suspect: true, events_per_hour: h.events })
+        .catch(() => undefined);
+      // The stream itself costs bandwidth (11 MB in 5 min from one bot wallet on 2026-09-25):
+      // drop the subscription and try again next hour.
+      void this.pause(wallet);
+    }
+    return true;
+  }
+
+  private async pause(wallet: KolWallet): Promise<void> {
+    const sub = this.subs.get(wallet.address);
+    if (sub) {
+      this.subs.delete(wallet.address);
+      await sub.unsubscribe().catch(() => undefined);
+    }
+    const timer = setTimeout(() => void this.resume(wallet), 3_600_000);
+    timer.unref?.();
+  }
+
+  private async resume(wallet: KolWallet): Promise<void> {
+    if (this.subs.has(wallet.address)) return;
+    this.hourly.delete(wallet.address);
+    try {
+      const sub = await this.ws.subscribeLogs(wallet.address, (result) => {
+        const n = unwrapLogsNotification(result);
+        if (n) void this.onLogs(n, wallet);
+      });
+      this.subs.set(wallet.address, sub);
+      this.log.info(
+        { wallet: wallet.address, label: wallet.label },
+        "wallet resubscribed after pause",
+      );
+    } catch (err) {
+      this.log.warn({ wallet: wallet.address, err: errorMessage(err) }, "resubscribe failed");
+    }
+  }
+
   private async onLogs(n: LogsNotification, wallet: KolWallet): Promise<void> {
+    // Budget first: a bot wallet spamming *failed* transactions (113 notifications/s observed
+    // on 2026-09-25) must be cut off even though none of them is a trade.
+    if (this.overBudget(wallet)) return;
     if (n.err) return;
     if (!this.seen.first(`${wallet.address}:${n.signature}`)) return;
     this.metrics.event(this.name);
     try {
-      const tx = (await this.rpc.getTransaction(n.signature)) as ParsedTransaction | null;
+      // Alchemy first: KOL lookups are frequent and its CU budget is 30x Helius' credits.
+      const tx = (await this.rpc.getTransaction(n.signature, [
+        "alchemy",
+        "helius",
+        "public",
+        "extra",
+      ])) as ParsedTransaction | null;
       if (!tx) return;
       const trade = detectWalletTrade(tx, wallet.address);
       if (!trade) return;
