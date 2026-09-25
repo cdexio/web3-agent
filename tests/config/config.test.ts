@@ -13,7 +13,8 @@ describe("loadConfig", () => {
     expect(cfg.routes.workersPerRoute).toBe(5);
     expect(cfg.risk.positionSizeSol).toBe(0.05);
     expect(cfg.risk.exits.migration.hardCapSec).toBe(240);
-    expect(cfg.providers.helius.wsEnabled).toBe(false);
+    expect(cfg.providers.helius.wsEnabled).toBe(true);
+    expect(cfg.providers.alchemy.wsUrlTemplate).toContain("streaming.alchemy.com");
   });
 
   it("applies the mode overlay and override", () => {

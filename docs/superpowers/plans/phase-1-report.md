@@ -38,6 +38,25 @@ the keyed providers wait for the owner's credentials.
 | `pnpm smoke` (no keys) | DexScreener 306–738 ms, GeckoTerminal 174–550 ms, RugCheck anonymous 729–1041 ms, Jupiter keyless 520–980 ms (`feeBps=2`, `x-ratelimit-remaining=4`), Helius Sender 184 ms, PumpPortal 2.6–3.4 s to two confirmations, public RPC 217–653 ms, public WebSocket slot notification 285–646 ms, Claude CLI 2.1.280 present |
 | Skipped until keys exist | rpc:helius, rpc:alchemy, deepseek, postgres |
 
+### With the owner's keys (2026-09-25)
+
+| Provider | Result |
+|---|---|
+| rpc:helius (2 keys) | OK, 189–242 ms, both endpoints exercised |
+| rpc:alchemy (2 keys) | OK, 124–152 ms |
+| jupiter (1 key) | OK, 443–520 ms, `x-ratelimit-remaining=9` (keyless was 4) |
+| deepseek | OK, 279–462 ms; the API resolves `deepseek-v4-flash` to model name `deepseek-flash` |
+| solana-ws | OK via Alchemy streaming host, first slot notification in 2.4 s, 6 WebSocket endpoints available |
+| claude (one-shot, `--with-claude-call`) | OK, 6,421 ms cold one-shot on Opus 5.5 medium, est. API-equivalent cost $0.26; latency of the persistent process is measured in Phase 4 |
+| rpc:extra | FAIL: `EXTRA_RPC_*` held bare keys instead of URLs (owner to clear) |
+| postgres | FAIL: `DATABASE_URL` still the example placeholder (owner to set) |
+
+Fixes made after these results: Alchemy subscriptions moved to
+`solana-mainnet.streaming.alchemy.com` (the RPC host answers "Method not
+found"); the WebSocket manager now fails over per method when an endpoint
+reports -32601; Helius WebSocket enabled as second choice with byte
+accounting; CLI tolerates pnpm's literal `--`.
+
 ## Facts learned during the build (now in the research/design docs)
 
 - RugCheck removed the legacy wallet login; API keys come from FluxRPC.

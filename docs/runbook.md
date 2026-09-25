@@ -82,6 +82,8 @@ requires `WALLET_KEYPAIR_PATH` and refuses to start otherwise.
 
 - `configuration error: ... pending migration(s)`: run `pnpm migrate`.
 - `smoke` shows `SKIP` for a provider: its key is missing in `.env` (expected until the owner adds it).
-- `smoke` shows `FAIL` for `solana-ws`: no WebSocket endpoint; add an Alchemy key (Helius WS is intentionally off).
+- `smoke` shows `FAIL` for `solana-ws`: no WebSocket endpoint answered; add an Alchemy or Helius key. Alchemy subscriptions use the `streaming` host, which the config already points to.
+- `smoke` shows `FAIL` for `rpc:extra` with a network error: `EXTRA_RPC_HTTP_URLS` / `EXTRA_RPC_WS_URLS` must be full URLs, not API keys; clear them if unused.
+- Pass flags without a separating `--`: `pnpm smoke --with-claude-call` (a literal `--` is also tolerated).
 - `claude` smoke fails with a nested-session error: the engine strips the `CLAUDECODE` env marker; make sure `claude` is the real binary in `PATH` and logged in (`claude auth status`).
 - Postgres `fe_sendauth: no password supplied`: `DATABASE_URL` lacks a password or the role uses peer auth.

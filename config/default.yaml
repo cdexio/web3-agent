@@ -81,13 +81,16 @@ providers:
     rateLimits: { default: { perSecond: 10 } } # Free plan
     monthlyCreditBudget: 1000000 # Free plan
     creditCosts: { rpc: 1, das: 10, getProgramAccounts: 10, streamPerMb: 20 }
-    # All Helius WebSocket traffic is billed 20 credits/MB since 2026-05-01, so streams
-    # are disabled here and served by Alchemy / PumpPortal / public RPC instead.
-    wsEnabled: false
+    # All Helius WebSocket traffic is billed 20 credits/MB since 2026-05-01. Streams go to
+    # Alchemy first; Helius is the second choice for low-volume subscriptions (a migration
+    # program stream is ~2 MB/day ~ 1,200 credits/month) with byte accounting and the 80% alarm.
+    wsEnabled: true
     timeoutMs: 8000
   alchemy:
     rpcUrlTemplate: https://solana-mainnet.g.alchemy.com/v2/{key}
-    wsUrlTemplate: wss://solana-mainnet.g.alchemy.com/v2/{key}
+    # Subscriptions live on the streaming host, not the RPC host (verified 2026-09-25:
+    # the RPC host answers "Method not found" for every *Subscribe).
+    wsUrlTemplate: wss://solana-mainnet.streaming.alchemy.com/v2/{key}
     monthlyComputeUnitBudget: 30000000 # Free tier
     computeUnitPerStreamEventEstimate: 40 # Alchemy docs: ~1000-byte event ~ 40 CU
     computeUnitPerRpcCallEstimate: 20 # [TUNABLE] estimate; replace with dashboard-measured value

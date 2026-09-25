@@ -82,8 +82,8 @@ export const RPC_BUDGET = {
   extra: "extra-rpc",
 } as const;
 
-/** Stream preference: Alchemy (30M CU), public, extra, then Helius (billed per MB). */
-const WS_PREFERENCE: RpcProviderName[] = ["alchemy", "public", "extra", "helius"];
+/** Stream preference: Alchemy (30M CU), Helius (20 credits/MB, fine for low-volume subs), public, extra. */
+const WS_PREFERENCE: RpcProviderName[] = ["alchemy", "helius", "public", "extra"];
 
 export function buildEndpoints(
   opts: Omit<SolanaRpcPoolOptions, "budget" | "logger" | "clock">,

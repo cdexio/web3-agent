@@ -36,7 +36,8 @@ function parseMode(v: string | undefined): Mode | undefined {
 
 async function main(argv: string[]): Promise<number> {
   const { values, positionals } = parseArgs({
-    args: argv,
+    // pnpm forwards a literal "--" when invoked as `pnpm smoke -- --flag`; drop it.
+    args: argv.filter((a) => a !== "--"),
     allowPositionals: true,
     options: {
       mode: { type: "string" },

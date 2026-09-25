@@ -313,29 +313,56 @@ export class SolanaWsManager {
     params: unknown[],
     handler: NotificationHandler,
   ): Promise<Subscription> {
-    const conn = await this.pickConnection();
-    const id = `sub-${this.nextSubId++}`;
-    const record: SubRecord = { id, method, unsubscribeMethod, params, handler, serverId: null };
-    await conn.subscribe(record);
-    return {
-      id,
-      method,
-      params,
-      provider: conn.endpoint.provider,
-      unsubscribe: () => conn.unsubscribe(id),
-    };
+    // An endpoint that answers "Method not found" (-32601) is skipped for that
+    // method from then on and the subscription fails over to the next endpoint.
+    for (;;) {
+      const conn = await this.pickConnection(method);
+      const id = `sub-${this.nextSubId++}`;
+      const record: SubRecord = { id, method, unsubscribeMethod, params, handler, serverId: null };
+      try {
+        await conn.subscribe(record);
+      } catch (err) {
+        conn.subs.delete(id);
+        if (err instanceof ProviderError && /-32601|not found/i.test(err.message)) {
+          this.unsupported.add(`${conn.endpoint.id}|${method}`);
+          this.logger.warn(
+            { endpoint: conn.endpoint.id, method },
+            "method unsupported; failing over",
+          );
+          continue;
+        }
+        throw err;
+      }
+      return {
+        id,
+        method,
+        params,
+        provider: conn.endpoint.provider,
+        unsubscribe: () => conn.unsubscribe(id),
+      };
+    }
   }
 
-  private async pickConnection(): Promise<Connection> {
+  private readonly unsupported = new Set<string>();
+
+  private supports(endpoint: RpcEndpoint, method: string): boolean {
+    return !this.unsupported.has(`${endpoint.id}|${method}`);
+  }
+
+  private async pickConnection(method: string): Promise<Connection> {
     for (const c of this.connections) {
-      if (c.subs.size < this.cfg.maxSubscriptionsPerConnection) {
+      if (
+        c.subs.size < this.cfg.maxSubscriptionsPerConnection &&
+        this.supports(c.endpoint, method)
+      ) {
         if (!c.isOpen) await c.open();
         return c;
       }
     }
-    // Open a new connection on the endpoint with the fewest connections, in preference order.
+    // Open a new connection in preference order, skipping endpoints known not to support the method.
     let lastError: unknown = null;
     for (const endpoint of this.endpoints) {
+      if (!this.supports(endpoint, method)) continue;
       const conn = new Connection(
         endpoint,
         this.cfg,
@@ -357,7 +384,9 @@ export class SolanaWsManager {
     }
     throw lastError instanceof Error
       ? lastError
-      : new ProviderError(this.name, "no WebSocket endpoint available", { kind: "network" });
+      : new ProviderError(this.name, `no WebSocket endpoint supports ${method}`, {
+          kind: "network",
+        });
   }
 
   stats(): {
@@ -387,8 +416,8 @@ export class SolanaWsManager {
       return { provider: this.name, ok: false, skipped: "no WebSocket endpoint configured" };
     const started = Date.now();
     try {
-      const notified = new Promise<RpcProviderName>((resolve) => {
-        this.subscribeSlot((_r, ctx) => resolve(ctx.provider)).catch(() => undefined);
+      const notified = new Promise<RpcProviderName>((resolve, reject) => {
+        this.subscribeSlot((_r, ctx) => resolve(ctx.provider)).catch(reject);
       });
       const timeout = new Promise<never>((_r, reject) =>
         setTimeout(
