@@ -29,7 +29,40 @@ export const configSchema = z.object({
       minPoolAgeSec: z.number().int().min(0),
       dedupCooldownSec: z.number().int().min(0),
     }),
-    warming: z.object({ recheckIntervalSec: z.number().int().min(1) }),
+    warming: z.object({
+      recheckIntervalSec: z.number().int().min(1),
+      maxSize: z.number().int().min(1),
+      expireSec: z.number().int().min(1),
+      signalsBypassWarming: z.boolean(),
+    }),
+  }),
+  scanner: z.object({
+    geckoNewPools: z.object({
+      intervalSec: z.number().int().min(1),
+      pages: z.number().int().min(1).max(5),
+    }),
+    geckoTrending: z.object({
+      intervalSec: z.number().int().min(1),
+      durations: z.array(z.enum(["5m", "1h", "6h", "24h"])).min(1),
+    }),
+    dexscreenerLists: z.object({ intervalSec: z.number().int().min(1) }),
+    rugcheckStats: z.object({ intervalSec: z.number().int().min(1) }),
+    poolResolve: z.object({
+      retries: z.number().int().min(0),
+      retryDelaySec: z.number().int().min(1),
+    }),
+    bondingCurveDexIds: z.array(z.string()),
+    ammLaunchpadByDexId: z.record(z.string(), z.string()),
+    migrationWatcher: z.object({
+      enabled: z.boolean(),
+      programs: z.array(z.object({ id: z.string(), label: z.string(), launchpad: z.string() })),
+    }),
+    pumpportal: z.object({ enabled: z.boolean() }),
+    kol: z.object({
+      enabled: z.boolean(),
+      maxWallets: z.number().int().min(1),
+      botSuspectTradesPerDay: z.number().int().min(1),
+    }),
   }),
   risk: z.object({
     positionSizeSol: z.number().positive(),
@@ -79,6 +112,7 @@ export const configSchema = z.object({
       baseUrl: z.string().url(),
       apiVersion: z.string(),
       rateLimits: z.object({ default: rateLimit }),
+      rateLimitPauseMs: z.number().int().positive(),
       timeoutMs: z.number().int().positive(),
     }),
     rugcheck: z.object({

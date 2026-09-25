@@ -55,10 +55,12 @@ export async function httpJson<T>(provider: string, req: HttpRequest): Promise<H
   const latencyMs = Date.now() - started;
   const text = await res.text();
   if (!res.ok) {
+    const retryAfterMs = parseRetryAfter(res.headers.get("retry-after"));
     throw new ProviderError(provider, `HTTP ${res.status} ${res.statusText}`, {
       status: res.status,
       kind: kindFromStatus(res.status),
       body: text.slice(0, 500),
+      ...(retryAfterMs !== undefined ? { retryAfterMs } : {}),
     });
   }
   let data: T;
@@ -73,6 +75,16 @@ export async function httpJson<T>(provider: string, req: HttpRequest): Promise<H
     });
   }
   return { status: res.status, headers: res.headers, data, latencyMs };
+}
+
+/** Retry-After is either delay seconds or an HTTP date. */
+export function parseRetryAfter(value: string | null): number | undefined {
+  if (value === null || value.trim() === "") return undefined;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
+  const at = Date.parse(value);
+  if (Number.isNaN(at)) return undefined;
+  return Math.max(0, at - Date.now());
 }
 
 export interface RetryOptions {

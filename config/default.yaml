@@ -16,6 +16,32 @@ routes:
     dedupCooldownSec: 900
   warming:
     recheckIntervalSec: 60
+    maxSize: 300
+    expireSec: 2400 # a pool older than 40 min that never qualified is forgotten
+    signalsBypassWarming: true # a KOL/trending/boost signal on a young AMM pool goes straight to Mature
+
+scanner:
+  # GeckoTerminal indexes a new pool ~150 s after creation (soak 2026-09-25), so it is a
+  # Mature/warming feed; Migration detection relies on PumpPortal and the WebSocket watcher.
+  geckoNewPools: { intervalSec: 15, pages: 1 } # 4 req/min
+  geckoTrending: { intervalSec: 120, durations: [5m, 1h, 6h] } # 1.5 req/min
+  dexscreenerLists: { intervalSec: 60 } # boosts latest/top + profiles latest = 3 of 60 req/min
+  rugcheckStats: { intervalSec: 120 } # trending + new_tokens = 1 req/min
+  poolResolve: { retries: 3, retryDelaySec: 10 } # DexScreener token-pairs lookup after a migration event
+  # [TUNABLE] GeckoTerminal dex ids that are bonding curves (pre-graduation); they are recorded as
+  # launches for creator history, never traded. Unknown dex ids are treated as AMM pools.
+  bondingCurveDexIds:
+    [pump-fun, raydium-launchlab, meteora-dbc, boop-fun, moonit, moonshot, heaven, bags-fm, token-mill, virtuals-solana, daos-fun]
+  # AMM dex id -> launchpad the pool graduated from, when that is known by construction.
+  ammLaunchpadByDexId: { pumpswap: pump.fun }
+  migrationWatcher:
+    enabled: true
+    # Only programs whose logs are migration-only. Never subscribe to an AMM or bonding-curve
+    # program here: their logs carry every swap and would exhaust the stream budget.
+    programs:
+      - { id: 39azUYFWPz3VHgKCf3VChUwbpURdCHRxjWVowf5jUJjg, label: pump.fun-migration, launchpad: pump.fun }
+  pumpportal: { enabled: true }
+  kol: { enabled: true, maxWallets: 200, botSuspectTradesPerDay: 150 }
 
 risk:
   positionSizeSol: 0.05
@@ -65,7 +91,10 @@ providers:
   geckoterminal:
     baseUrl: https://api.geckoterminal.com/api/v2
     apiVersion: "20230302"
-    rateLimits: { default: { perMinute: 30 } } # apiguide.geckoterminal.com/faq
+    # Documented 30 req/min, but a burst of 6 calls in ~3 s already returned 429 (probe
+    # 2026-09-25), so calls are spread evenly at 20/min with no burst; 429 pauses the client.
+    rateLimits: { default: { perMinute: 20, burst: 1 } }
+    rateLimitPauseMs: 15000
     timeoutMs: 8000
   rugcheck:
     baseUrl: https://api.rugcheck.xyz

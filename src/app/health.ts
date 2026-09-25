@@ -21,8 +21,16 @@ export interface HealthReport {
   queues: { migration: number; mature: number };
 }
 
+export interface RuntimeStats {
+  queues: { migration: number; mature: number };
+  [k: string]: unknown;
+}
+
 /** Provider health, budgets, DB status and heartbeat age (plan 1.6). */
-export async function collectHealth(ctx: AppContext): Promise<HealthReport> {
+export async function collectHealth(
+  ctx: AppContext,
+  runtime?: RuntimeStats,
+): Promise<HealthReport> {
   const p = ctx.providers;
   const db: HealthReport["db"] = {
     configured: ctx.db !== null,
@@ -65,7 +73,7 @@ export async function collectHealth(ctx: AppContext): Promise<HealthReport> {
     rpc: p.rpc.health(),
     budgets: ctx.budget.snapshots(),
     db,
-    queues: { migration: 0, mature: 0 },
+    queues: runtime?.queues ?? { migration: 0, mature: 0 },
   };
 }
 

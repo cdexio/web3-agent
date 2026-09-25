@@ -37,6 +37,11 @@ export interface ProviderClientOptions<K> {
   cooldownMs?: number;
   /** Longest wait for a cooling credential before giving up (default 5 s). */
   maxCooldownWaitMs?: number;
+  /**
+   * After a 429 the credential (or the anonymous lane) is paused for this long, or for the
+   * provider's Retry-After when it is longer. Default 10 s.
+   */
+  rateLimitPauseMs?: number;
   clock?: Clock;
 }
 
@@ -61,6 +66,7 @@ export abstract class ProviderClient<K = string> {
   protected readonly budget: BudgetTracker;
   protected readonly clock: Clock;
   private readonly limiters = new Map<string, TokenBucket>();
+  private readonly pausedUntil = new Map<string, number>();
   private readonly opts: ProviderClientOptions<K>;
 
   constructor(opts: ProviderClientOptions<K>) {
@@ -110,6 +116,7 @@ export abstract class ProviderClient<K = string> {
     for (;;) {
       const lease = forceAnonymous ? undefined : await this.leaseKey();
       const keyId = lease?.id ?? null;
+      await this.waitIfPaused(keyId ?? "anonymous");
       const limiter = this.limiterFor(keyId, family);
       await limiter.acquire();
       const started = this.clock.now();
@@ -127,6 +134,11 @@ export abstract class ProviderClient<K = string> {
           units,
         });
         if (keyId) this.keyPool.reportFailure(keyId, kind);
+        if (kind === "rate_limit") {
+          const retryAfter = isProviderError(err) ? (err.retryAfterMs ?? 0) : 0;
+          const pause = Math.max(retryAfter, this.opts.rateLimitPauseMs ?? 10_000);
+          this.pausedUntil.set(keyId ?? "anonymous", this.clock.now() + pause);
+        }
         const retryable = isProviderError(err) ? err.retryable : true;
         this.logger.warn(
           {
@@ -154,6 +166,15 @@ export abstract class ProviderClient<K = string> {
         attempt += 1;
       }
     }
+  }
+
+  /** Honour a 429 pause for the lane (credential or anonymous) before spending a limiter token. */
+  private async waitIfPaused(lane: string): Promise<void> {
+    const until = this.pausedUntil.get(lane);
+    if (until === undefined) return;
+    const wait = until - this.clock.now();
+    if (wait > 0) await this.clock.sleep(wait);
+    this.pausedUntil.delete(lane);
   }
 
   private async leaseKey(): Promise<{ id: string; value: K } | undefined> {

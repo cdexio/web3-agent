@@ -5,6 +5,8 @@ export interface ProviderErrorOptions {
   kind: FailureKind;
   cause?: unknown;
   body?: string;
+  /** From a Retry-After header, when the provider sent one. */
+  retryAfterMs?: number;
 }
 
 /**
@@ -16,6 +18,7 @@ export class ProviderError extends Error {
   readonly status: number | undefined;
   readonly kind: FailureKind;
   readonly body: string | undefined;
+  readonly retryAfterMs: number | undefined;
 
   constructor(provider: string, message: string, opts: ProviderErrorOptions) {
     super(`[${provider}] ${message}`, opts.cause === undefined ? undefined : { cause: opts.cause });
@@ -24,6 +27,7 @@ export class ProviderError extends Error {
     this.status = opts.status;
     this.kind = opts.kind;
     this.body = opts.body;
+    this.retryAfterMs = opts.retryAfterMs;
   }
 
   get retryable(): boolean {

@@ -126,6 +126,27 @@ describe("ProviderClient", () => {
     expect(used).toEqual(["bad", null]);
   });
 
+  it("pauses the anonymous lane after a 429, honouring Retry-After", async () => {
+    const clock = new FakeClock();
+    const budget = new BudgetTracker({ test: { unitName: "calls" } }, 0.8, null, null, clock);
+    const client = new TestClient([], clock, budget, true);
+    let calls = 0;
+    await client.run(async () => {
+      calls += 1;
+      if (calls === 1)
+        throw new ProviderError("test", "429", {
+          kind: "rate_limit",
+          status: 429,
+          retryAfterMs: 30_000,
+        });
+      return "ok";
+    });
+    expect(calls).toBe(2);
+    // The retry waited out the 30 s Retry-After (longer than the default 10 s pause),
+    // minus the few milliseconds of retry backoff already slept.
+    expect(clock.sleeps.some((ms) => ms >= 29_000 && ms <= 30_000)).toBe(true);
+  });
+
   it("refuses to run without a key when anonymous is not allowed", async () => {
     const clock = new FakeClock();
     const budget = new BudgetTracker({ test: { unitName: "calls" } }, 0.8, null, null, clock);

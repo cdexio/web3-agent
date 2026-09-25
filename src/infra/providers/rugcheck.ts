@@ -152,16 +152,17 @@ export class RugCheckClient extends ProviderClient<string> {
     return this.post<RugReport[]>("/v1/bulk/tokens/report", { mints });
   }
 
-  statsTrending(): Promise<RugStatsToken[]> {
-    return this.get<RugStatsToken[]>("/v1/stats/trending");
+  /** The stats endpoints return `null` when the list is empty (observed 2026-09-25). */
+  async statsTrending(): Promise<RugStatsToken[]> {
+    return (await this.get<RugStatsToken[] | null>("/v1/stats/trending")) ?? [];
   }
 
-  statsNewTokens(): Promise<RugStatsToken[]> {
-    return this.get<RugStatsToken[]>("/v1/stats/new_tokens");
+  async statsNewTokens(): Promise<RugStatsToken[]> {
+    return (await this.get<RugStatsToken[] | null>("/v1/stats/new_tokens")) ?? [];
   }
 
-  statsRecent(): Promise<RugStatsToken[]> {
-    return this.get<RugStatsToken[]>("/v1/stats/recent");
+  async statsRecent(): Promise<RugStatsToken[]> {
+    return (await this.get<RugStatsToken[] | null>("/v1/stats/recent")) ?? [];
   }
 
   async smoke(): Promise<SmokeResult> {

@@ -92,6 +92,7 @@ export class GeckoTerminalClient extends ProviderClient<never> {
       keyId: () => "none",
       allowAnonymous: true,
       limiterFor: () => cfg.rateLimits.default,
+      rateLimitPauseMs: cfg.rateLimitPauseMs,
       budget,
       logger,
     });

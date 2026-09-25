@@ -4,6 +4,7 @@ import type { Mode } from "../domain/types.js";
 import { pendingMigrations, runMigrations } from "../infra/db/migrate.js";
 import { ConfigVersionRepo, HeartbeatRepo, UsageRepo } from "../infra/db/repos.js";
 import { errorMessage } from "../infra/errors.js";
+import { Scanner } from "../scanner/scanner.js";
 import { buildContext, MIGRATIONS_DIR } from "./context.js";
 import { collectHealth } from "./health.js";
 
@@ -59,18 +60,34 @@ export async function start(opts: StartOptions = {}): Promise<void> {
     if (ctx.config.mode === "live") {
       log.warn("LIVE MODE: real transactions will be sent once execution is attached (Phase 5/9)");
     }
+    const scanner = ctx.config.mode === "backtest" ? null : new Scanner(ctx);
+    if (scanner) await scanner.start();
     log.info(
-      { mode: ctx.config.mode, instance: ctx.instanceId },
-      "engine started (phase 1: infrastructure only)",
+      { mode: ctx.config.mode, instance: ctx.instanceId, scanner: scanner !== null },
+      "engine started (phase 2: scanners and routing; trading stages not attached)",
     );
 
     const beat = async () => {
       try {
-        const health = await collectHealth(ctx);
+        const stats = scanner?.stats();
+        const health = await collectHealth(ctx, stats ? { queues: stats.queues } : undefined);
         await heartbeats.beat(ctx.instanceId, ctx.config.mode, {
           budgets: health.budgets.map((b) => ({ p: b.provider, m: b.unitsMonth, f: b.fraction })),
           ws: ctx.providers.ws.stats(),
           queues: health.queues,
+          scanner: stats
+            ? {
+                queueStats: stats.queueStats,
+                workers: stats.workers,
+                warming: stats.warming,
+                resolving: stats.resolving,
+                unresolved: stats.unresolved,
+                sources: stats.metrics.sources,
+                routes: stats.metrics.routes,
+                migrationWatcher: stats.migrationWatcher,
+                kol: stats.kol,
+              }
+            : null,
         });
       } catch (err) {
         log.warn({ err: errorMessage(err) }, "heartbeat failed");
@@ -97,6 +114,15 @@ export async function start(opts: StartOptions = {}): Promise<void> {
       process.once("SIGINT", () => stop("SIGINT"));
       process.once("SIGTERM", () => stop("SIGTERM"));
     });
+    if (scanner) {
+      await scanner.stop();
+      const s = scanner.stats();
+      log.info(
+        { routes: s.metrics.routes, sources: s.metrics.sources, workers: s.workers },
+        "scanner stopped",
+      );
+    }
+    await beat();
     await flush();
   } finally {
     await ctx.close();
