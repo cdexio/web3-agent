@@ -106,8 +106,9 @@ export abstract class ProviderClient<K = string> {
     const family = options.family ?? "default";
     const units = options.units ?? 1;
     let attempt = 0;
+    let forceAnonymous = false;
     for (;;) {
-      const lease = await this.leaseKey();
+      const lease = forceAnonymous ? undefined : await this.leaseKey();
       const keyId = lease?.id ?? null;
       const limiter = this.limiterFor(keyId, family);
       await limiter.acquire();
@@ -139,6 +140,13 @@ export abstract class ProviderClient<K = string> {
           },
           "provider call failed",
         );
+        // A rejected key on a provider that also serves anonymous traffic: retry once without it,
+        // so a bad or expired key degrades to the anonymous rate limit instead of an outage.
+        if (kind === "auth" && keyId && this.opts.allowAnonymous && !forceAnonymous) {
+          forceAnonymous = true;
+          this.logger.warn({ keyId }, "credential rejected; retrying anonymously");
+          continue;
+        }
         if (!retryable || attempt >= retries) throw err;
         await this.clock.sleep(
           jitter(Math.min(5_000, (this.opts.retryBaseMs ?? 250) * 2 ** attempt)),

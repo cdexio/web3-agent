@@ -178,8 +178,9 @@ export class RugCheckClient extends ProviderClient<string> {
     }
   }
 
+  /** FluxRPC docs (fluxrpc.com/docs/rugcheck/getting-started): the key goes in `X-API-KEY`. */
   private headers(key: string | null): Record<string, string> {
-    return key ? { authorization: key } : {};
+    return key ? { "x-api-key": key } : {};
   }
 
   private get<T>(path: string): Promise<T> {

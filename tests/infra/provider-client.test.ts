@@ -112,6 +112,20 @@ describe("ProviderClient", () => {
     expect(key).toBeNull();
   });
 
+  it("falls back to anonymous once when a key is rejected and anonymous is allowed", async () => {
+    const clock = new FakeClock();
+    const budget = new BudgetTracker({ test: { unitName: "calls" } }, 0.8, null, null, clock);
+    const client = new TestClient(["bad"], clock, budget, true);
+    const used: Array<string | null> = [];
+    const result = await client.run(async (key) => {
+      used.push(key);
+      if (key !== null) throw new ProviderError("test", "401", { kind: "auth", status: 401 });
+      return "anon-ok";
+    });
+    expect(result).toBe("anon-ok");
+    expect(used).toEqual(["bad", null]);
+  });
+
   it("refuses to run without a key when anonymous is not allowed", async () => {
     const clock = new FakeClock();
     const budget = new BudgetTracker({ test: { unitName: "calls" } }, 0.8, null, null, clock);
